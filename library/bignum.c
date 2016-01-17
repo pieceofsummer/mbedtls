@@ -788,7 +788,7 @@ int mbedtls_mpi_shift_r( mbedtls_mpi *X, size_t count )
         for( ; i < X->n; i++ )
             X->p[i] = 0;
     }
-
+    
     /*
      * shift by count % limb_size
      */
@@ -816,17 +816,19 @@ int mbedtls_mpi_cmp_abs( const mbedtls_mpi *X, const mbedtls_mpi *Y )
     i = mpi_get_n( X );
     j = mpi_get_n( Y );
     
-    if( i == 0 && j == 0 )
+    if( i != j )
+        return( i > j ? 1 : -1 );
+    
+    if( i == 0 )
         return( 0 );
     
-    if( i > j ) return(  1 );
-    if( j > i ) return( -1 );
-    
-    for( ; i > 0; i-- )
+    do
     {
-        if( X->p[i - 1] > Y->p[i - 1] ) return(  1 );
-        if( X->p[i - 1] < Y->p[i - 1] ) return( -1 );
+        i--;
+        if ( X->p[i] != Y->p[i] )
+            return( X->p[i] > Y->p[i] ? 1 : -1 );
     }
+    while (i > 0);
     
     return( 0 );
 }
@@ -841,20 +843,22 @@ int mbedtls_mpi_cmp_mpi( const mbedtls_mpi *X, const mbedtls_mpi *Y )
     i = mpi_get_n( X );
     j = mpi_get_n( Y );
     
-    if( i == 0 && j == 0 )
+    if( i != j )
+        return( i > j ? X->s : -Y->s );
+    
+    if( i == 0 )
         return( 0 );
     
-    if( i > j ) return(  X->s );
-    if( j > i ) return( -Y->s );
+    if( ( X->s ^ Y->s ) < 0 )
+        return( X->s );
     
-    if( X->s > 0 && Y->s < 0 ) return(  1 );
-    if( Y->s > 0 && X->s < 0 ) return( -1 );
-    
-    for( ; i > 0; i-- )
+    do
     {
-        if( X->p[i - 1] > Y->p[i - 1] ) return(  X->s );
-        if( X->p[i - 1] < Y->p[i - 1] ) return( -X->s );
+        i--;
+        if ( X->p[i] != Y->p[i] )
+            return( X->p[i] > Y->p[i] ? X->s : -X->s );
     }
+    while (i > 0);
     
     return( 0 );
 }
