@@ -164,6 +164,9 @@ int mbedtls_mpi_shrink( mbedtls_mpi *X, size_t nblimbs )
 
     i = mpi_get_n( X );
     
+    if( i == 0 )
+        i = 1;
+
     if( i < nblimbs )
         i = nblimbs;
 
@@ -201,6 +204,9 @@ int mbedtls_mpi_copy( mbedtls_mpi *X, const mbedtls_mpi *Y )
     }
 
     i = mpi_get_n( Y );
+
+    if( i == 0 )
+        i = 1;
     
     X->s = Y->s;
 
