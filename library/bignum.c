@@ -108,6 +108,18 @@ void mbedtls_mpi_free( mbedtls_mpi *X )
     X->p = NULL;
 }
 
+static inline size_t mpi_get_n( const mbedtls_mpi *X )
+{
+    size_t i;
+    mbedtls_mpi_uint *x = X->p + X->n;
+    
+    for ( i = X->n; i > 0; i-- )
+        if ( *(--x) != 0 )
+            break;
+    
+    return( i );
+}
+
 /*
  * Enlarge to the specified number of limbs
  */
@@ -120,19 +132,19 @@ int mbedtls_mpi_grow( mbedtls_mpi *X, size_t nblimbs )
 
     if( X->n < nblimbs )
     {
-        if( ( p = mbedtls_calloc( nblimbs, ciL ) ) == NULL )
-            return( MBEDTLS_ERR_MPI_ALLOC_FAILED );
+            if( ( p = mbedtls_calloc( nblimbs, ciL ) ) == NULL )
+                return( MBEDTLS_ERR_MPI_ALLOC_FAILED );
 
-        if( X->p != NULL )
-        {
-            memcpy( p, X->p, X->n * ciL );
+            if( X->p != NULL )
+            {
+                memcpy( p, X->p, X->n * ciL );
             mbedtls_mpi_zeroize( X->p, X->n );
-            mbedtls_free( X->p );
-        }
+                mbedtls_free( X->p );
+            }
 
         X->n = nblimbs;
-        X->p = p;
-    }
+            X->p = p;
+        }
 
     return( 0 );
 }
@@ -150,10 +162,10 @@ int mbedtls_mpi_shrink( mbedtls_mpi *X, size_t nblimbs )
     if( X->n <= nblimbs )
         return( mbedtls_mpi_grow( X, nblimbs ) );
 
-    for( i = X->n - 1; i > 0; i-- )
-        if( X->p[i] != 0 )
-            break;
-    i++;
+    i = mpi_get_n( X );
+    
+    if( i == 0 )
+        i = 1;
 
     if( i < nblimbs )
         i = nblimbs;
@@ -191,15 +203,15 @@ int mbedtls_mpi_copy( mbedtls_mpi *X, const mbedtls_mpi *Y )
         return( 0 );
     }
 
-    for( i = Y->n - 1; i > 0; i-- )
-        if( Y->p[i] != 0 )
-            break;
-    i++;
+    i = mpi_get_n( Y );
 
+    if( i == 0 )
+        i = 1;
+    
     X->s = Y->s;
 
     MBEDTLS_MPI_CHK( mbedtls_mpi_grow( X, i ) );
-
+    
     if( X->n > i )
     {
         // clear only unused limbs
@@ -299,10 +311,10 @@ int mbedtls_mpi_lset( mbedtls_mpi *X, mbedtls_mpi_sint z )
 
     MBEDTLS_MPI_CHK( mbedtls_mpi_grow( X, 1 ) );
     memset( X->p, 0, X->n * ciL );
-
+    
     X->p[0] = ( z < 0 ) ? -z : z;
     X->s    = ( z < 0 ) ? -1 : 1;
-
+    
 cleanup:
 
     return( ret );
@@ -387,14 +399,11 @@ size_t mbedtls_mpi_bitlen( const mbedtls_mpi *X )
 {
     size_t i, j;
 
-    if( X->n == 0 )
+    i = mpi_get_n( X );
+    if( i == 0 )
         return( 0 );
 
-    for( i = X->n - 1; i > 0; i-- )
-        if( X->p[i] != 0 )
-            break;
-
-    j = biL - mbedtls_clz( X->p[i] );
+    j = biL - mbedtls_clz( X->p[--i] );
 
     return( ( i * biL ) + j );
 }
@@ -718,7 +727,7 @@ int mbedtls_mpi_shift_l( mbedtls_mpi *X, size_t count )
     int ret;
     size_t i, v0, t1;
     mbedtls_mpi_uint r0 = 0, r1;
-
+    
     v0 = count / (biL    );
     t1 = count & (biL - 1);
 
@@ -726,7 +735,7 @@ int mbedtls_mpi_shift_l( mbedtls_mpi *X, size_t count )
 
     if( X->n * biL < i )
         MBEDTLS_MPI_CHK( mbedtls_mpi_grow( X, BITS_TO_LIMBS( i ) ) );
-
+    
     ret = 0;
 
     /*
@@ -785,7 +794,7 @@ int mbedtls_mpi_shift_r( mbedtls_mpi *X, size_t count )
         for( ; i < X->n; i++ )
             X->p[i] = 0;
     }
-
+    
     /*
      * shift by count % limb_size
      */
@@ -809,27 +818,24 @@ int mbedtls_mpi_shift_r( mbedtls_mpi *X, size_t count )
 int mbedtls_mpi_cmp_abs( const mbedtls_mpi *X, const mbedtls_mpi *Y )
 {
     size_t i, j;
-
-    for( i = X->n; i > 0; i-- )
-        if( X->p[i - 1] != 0 )
-            break;
-
-    for( j = Y->n; j > 0; j-- )
-        if( Y->p[j - 1] != 0 )
-            break;
-
-    if( i == 0 && j == 0 )
+    
+    i = mpi_get_n( X );
+    j = mpi_get_n( Y );
+    
+    if( i != j )
+        return( i > j ? 1 : -1 );
+    
+    if( i == 0 )
         return( 0 );
-
-    if( i > j ) return(  1 );
-    if( j > i ) return( -1 );
-
-    for( ; i > 0; i-- )
+    
+    do
     {
-        if( X->p[i - 1] > Y->p[i - 1] ) return(  1 );
-        if( X->p[i - 1] < Y->p[i - 1] ) return( -1 );
+        i--;
+        if ( X->p[i] != Y->p[i] )
+            return( X->p[i] > Y->p[i] ? 1 : -1 );
     }
-
+    while (i > 0);
+    
     return( 0 );
 }
 
@@ -839,30 +845,27 @@ int mbedtls_mpi_cmp_abs( const mbedtls_mpi *X, const mbedtls_mpi *Y )
 int mbedtls_mpi_cmp_mpi( const mbedtls_mpi *X, const mbedtls_mpi *Y )
 {
     size_t i, j;
-
-    for( i = X->n; i > 0; i-- )
-        if( X->p[i - 1] != 0 )
-            break;
-
-    for( j = Y->n; j > 0; j-- )
-        if( Y->p[j - 1] != 0 )
-            break;
-
-    if( i == 0 && j == 0 )
+    
+    i = mpi_get_n( X );
+    j = mpi_get_n( Y );
+    
+    if( i != j )
+        return( i > j ? X->s : -Y->s );
+    
+    if( i == 0 )
         return( 0 );
-
-    if( i > j ) return(  X->s );
-    if( j > i ) return( -Y->s );
-
-    if( X->s > 0 && Y->s < 0 ) return(  1 );
-    if( Y->s > 0 && X->s < 0 ) return( -1 );
-
-    for( ; i > 0; i-- )
+    
+    if( ( X->s ^ Y->s ) < 0 )
+        return( X->s );
+    
+    do
     {
-        if( X->p[i - 1] > Y->p[i - 1] ) return(  X->s );
-        if( X->p[i - 1] < Y->p[i - 1] ) return( -X->s );
+        i--;
+        if ( X->p[i] != Y->p[i] )
+            return( X->p[i] > Y->p[i] ? X->s : -X->s );
     }
-
+    while (i > 0);
+    
     return( 0 );
 }
 
@@ -904,12 +907,10 @@ int mbedtls_mpi_add_abs( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
      */
     X->s = 1;
 
-    for( j = B->n; j > 0; j-- )
-        if( B->p[j - 1] != 0 )
-            break;
-
+    j = mpi_get_n( B );
+    
     MBEDTLS_MPI_CHK( mbedtls_mpi_grow( X, j ) );
-
+    
     o = B->p; p = X->p; c = 0;
 
     /*
@@ -989,12 +990,10 @@ int mbedtls_mpi_sub_abs( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
 
     ret = 0;
 
-    for( n = B->n; n > 0; n-- )
-        if( B->p[n - 1] != 0 )
-            break;
-
+    n = mpi_get_n( B );
+    
     mpi_sub_hlp( n, B->p, X->p );
-
+    
 cleanup:
 
     mbedtls_mpi_free( &TB );
@@ -1179,10 +1178,8 @@ static int mpi_sqr_hlp( mbedtls_mpi *X, const mbedtls_mpi *A )
     mbedtls_mpi_uint r0, r1;
     mbedtls_mpi_uint d0 = 0, d1 = 0, d2 = 0;
 
-    for( n = A->n; n > 0; n-- )
-        if( A->p[n - 1] != 0 )
-            break;
-
+    n = mpi_get_n( A );
+    
     if( n == 0 )
     {
         // final 'X->p[2 * n - 1] = d0' will fail if input has zero length
@@ -1193,7 +1190,7 @@ static int mpi_sqr_hlp( mbedtls_mpi *X, const mbedtls_mpi *A )
     mbedtls_mpi_init( &TA );
     
     if( X == A ) { MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &TA, A ) ); A = &TA; }
-    
+
     MBEDTLS_MPI_CHK( mbedtls_mpi_grow( X, n * 2 ) );
     
     if( X->n > n * 2 )
@@ -1295,15 +1292,10 @@ int mbedtls_mpi_mul_mpi( mbedtls_mpi *X, const mbedtls_mpi *A, const mbedtls_mpi
 
     if( X == A ) { MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &TA, A ) ); A = &TA; }
     if( X == B ) { MBEDTLS_MPI_CHK( mbedtls_mpi_copy( &TB, B ) ); B = &TB; }
-
-    for( i = A->n; i > 0; i-- )
-        if( A->p[i - 1] != 0 )
-            break;
-
-    for( j = B->n; j > 0; j-- )
-        if( B->p[j - 1] != 0 )
-            break;
-
+    
+    i = mpi_get_n( A );
+    j = mpi_get_n( B );
+    
     MBEDTLS_MPI_CHK( mbedtls_mpi_grow( X, i + j ) );
     MBEDTLS_MPI_CHK( mbedtls_mpi_lset( X, 0 ) );
 
